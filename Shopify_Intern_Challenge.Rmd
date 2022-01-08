@@ -1,0 +1,173 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+---
+__Summer 2022 Data Science Intern Challenge__
+
+__Thi Giang__
+
+January 7th, 2022
+
+
+```{r}
+setwd("/Users/gabati/Documents/Internship/Shopify/")
+library(readxl)
+library(ggplot2)
+challenge<-read_excel("Data.xlsx")
+
+```
+
+__Question 1a: Think about what could be going wrong with our calculation. Think about a better way to evaluate this data.__ 
+
+Answer:
+
+As given in the begining that the shops sell a affordable item---snearker, but the AOV of $3145.13 per oder is too high. The AOV here was calculated by taking the average revenue of all 100 shops over 5,000 orders (total orders of 100 shops in 30 days). Let have a quick look into the data by observing the boxplot:
+```{r}
+ggplot(data=data.frame(challenge$order_amount), aes(y=challenge$order_amount))+
+  geom_boxplot()+
+  scale_x_discrete()+
+  coord_trans(y= "log10")+
+  ylab("Amount order")+
+  scale_y_continuous(breaks=c(100,150,300,400,3000,25000, 70000))
+```
+
+__There are two things could be going wrong here.__
+      
+1. First, the mean is extremely sensitive with outliers but this dataset has many potential outliers. There is a shop that sell sneakers with extremely high price (shop 78 with price of $25,725 per pair). Shop 42 that sales with large quantity per order (2000 items) compared to the majority of the   data. It makes these orders become outliers of the dataset. Therefore, if we just naively take the average per order, we will get high AOV but it does not reflect correctly customer buying behavior or their amount purchase each time.
+     
+```{r}
+table(challenge$total_items)
+cat("Shop that had the most quantity sold in one order is shop", challenge$shop_id[which.max(challenge$total_items)], "\n")
+unit_price<-challenge$order_amount/challenge$total_items
+cat("Shop that sold the most expensive item is shop ", challenge$shop_id[which.max(unit_price)], " at $", unit_price[which.max(unit_price)],"/ item", sep="")
+```
+      
+      
+2. Second, as we all aware that the error might present during collecting the data, I suspect that some observations in this dataset are potentially wrong data. If we look closer on the orders of shop 42, we see that there are  multiple orders have the EXACT SAME details about user id, order amount, date and time (see the result below). This may happen when the payment was cancled due to error but the program still recorded the order in database. Plus, these transactions have the highest order amounts of $704,000 in the whole dataset. So if these transactions are wrong, it obviously indicates that the AOV is misleading.
+```{r}
+ challenge[c(521,4647,61,16,2298,1437,2154,1363,1603,1563,4869,1105,333,4883,2836,2970,4057),]
+
+```
+       
+__Think about a better way to evaluate this data.__
+
+    As I suspected that there might be wrong observations in the data, I would have double checked and cleaned the data before I worked on evaluation step. However, for this assignment purpose, I will assume that the observations are correct, and consider them as outliers to continue my analysis.
+    
+    I think a better way to evaluate this dataset is to separate the outliers and the majority of the data and then calculate AOV for each group. If we look at the statistics above, we can see, the number of items that the customers order each time is skew to the right. Most of customers order 1 to 2 pairs per order. These customer might be invidual customers that buy for their personal interest. About 26% of the orders purchased from 3 to 8 items. They might be individuals who buy and sell back. We can group these two kind of customer together as the amount of orders that they purchase are not significantly different. There are 17 orders in total of 5000 orders that sell 2000 items at a time. These customers might be big retailers. Though the items that sold per order at shop 78 are normal (from 1 to 6 items per order), we will still separate all the orders from this shop as outliers because the item that this shop sells is luxary item.
+    
+    
+__Question 1b What metric would you report for this dataset?__
+
+    One quick way to deal with outlier is to use Median which is not affected by outliers. However, if we use only median, the AOV will only reflect the majority of the data but not for the observation with high amount of order.
+
+    Instead, we can separate the data into two groups. The first group include the orders that have regular order amount. The second group is the group with extreme outliers (the order with 2000 items sold and order that sold the most expensive sneaker)
+
+__Question 1c. What is its value?__
+
+    If we simply want to choose a better metric, median of the data which is $284 is a better choice compare to the mean for this dataset.
+```{r}
+cat("Median is $", median(challenge$order_amount), sep="")
+```
+
+
+    If separate the dataset into groups that has similar characteristic, the AOV for group 1 is $302.58.
+```{r}
+shop42_index<-which(challenge$order_amount==704000)
+shop78_index<-which(challenge$shop_id==78)
+outlier<-c(shop42_index,shop78_index)
+group1<-challenge[-outlier,]
+cat("The average order value of group 1 is $", round(sum(group1$order_amount)/length(group1$order_amount),2), sep="")
+```
+```{r}
+AOV_TABLE<-data.frame()
+for (i in 1:100)  {
+  Total_order_amount<-sum(challenge$order_amount[which(challenge$shop_id==i)])
+  Shop_id<-i
+  Total_order<-length(which(challenge$shop_id==i))
+  Total_items<-sum(challenge$total_items[which(challenge$shop_id==i)])
+  Price_unit<-Total_order_amount/Total_items
+  AOV_by_shop<-round(Total_order_amount/Total_order,2)
+  by_shop<-cbind(Shop_id,Total_order,Total_items,Total_order_amount, Price_unit,AOV_by_shop)
+  AOV_TABLE<-rbind(AOV_TABLE,by_shop)
+}
+AOV_TABLE
+```
+In group 2, the observations are divided into two catagories. One is order with high quantity and one is order with high price item. Therefore, I used AOV_TABLE to extract the AOV of shop 78 which is $49213.04 per order. This number is more suitable to be the estimation of the average order value for this shop.
+Shop 42 sells sneaker with price of $352 per items. This price is on the high side compared to the usual price of sneaker, but it is still affordable. This shop had 51 orders in 30 days window. Among those, 17 orders are big orders with the total sell of 2000 items each. The AOV for this shop is $235101.49 because of the big transactions. This shop can actually divide their customer into regular and high spender. They can use the AOV of group 1 to target on customers that spend normally and have some offer, reward program to high spenders to keep them back to the shop.
+
+
+
+__Question 2: For this question you’ll need to use SQL. Follow this link to access the data set required for the challenge. Please use queries to answer the following questions. Paste your queries along with your final numerical answers below.__
+
+__a. How many orders were shipped by Speedy Express in total?__
+
+Answer: 54 orders were shipped by Speedy Express in total.
+Solution 1:
+```
+SELECT COUNT(Orders.OrderID) AS ShipBySpeedy FROM Orders
+WHERE Orders.ShipperID=(SELECT Shippers.ShipperID FROM Shippers WHERE ShipperName='Speedy Express');
+```
+Solution 2 (using join tables)
+```
+SELECT Count(Orders.ShipperID) AS ShipBySpeedy FROM Orders
+  JOIN Shippers On Orders.ShipperID = Shippers.ShipperID
+	WHERE ShipperName='Speedy Express';
+```
+
+__b. What is the last name of the employee with the most orders?__
+
+Answer: The last name of the employee with most orders is Peacock with total of 40 orders.
+
+```
+SELECT Employees.LastName 
+FROM Employees
+WHERE Employees.EmployeeID=
+  (SELECT EmployeeID 
+  FROM (SELECT COUNT(Orders.OrderID) AS TotalOrder, Orders.EmployeeID FROM Orders
+        GROUP BY Orders.EmployeeID
+        ORDER BY TotalOrder DESC
+        LIMIT 1));
+```
+
+As the question asked for total orders not total quantity so I use Orders table to get the EmployeeID with highest number of order, and get the LastName of that employee from the Employee table.
+
+__c. What product was ordered the most by customers in Germany?__
+
+Answer: Boston Crab Meat is the product which was ordered the most by custoners in Germany with 160 orders.
+
+```
+SELECT Products.ProductName FROM Products
+WHERE Products.ProductID=
+  (SELECT ProductID FROM
+    (SELECT ProductID, SUM(Quantity) AS TotalQuantity FROM 
+      ((SELECT Orders.OrderID FROM Orders
+          JOIN Customers ON Orders.CustomerID=Customers.CustomerID
+          WHERE Customers.Country="Germany") AS GermanyOrders
+          JOIN OrderDetails ON GermanyOrders.OrderID=OrderDetails.OrderID)
+   GROUP BY ProductID
+   ORDER BY TotalQuantity DESC LIMIT 1));
+```
+
+
+
+
+
+
+        
+
+     
+    
+         
+      
+
+          
+          
+         
+          
+    
+
+
+
